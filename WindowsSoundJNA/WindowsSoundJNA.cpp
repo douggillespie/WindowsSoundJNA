@@ -48,6 +48,12 @@ int* usedDevices = NULL;
 
 HWAVEIN hWaveIn;
 
+#define NBUFFERS 10
+int bufferLenBytes;
+int currentBuffer = 0;
+void** buffers = NULL;
+static LPWAVEHDR wHead[NBUFFERS];
+
 
 WINDOWSSOUNDJNA_API int enumerateDevices() {
 	int t = mixerGetNumDevs();
@@ -107,6 +113,33 @@ WINDOWSSOUNDJNA_API int getDeviceChannels(int iDevice) {
 	return deviceCaps[iDevice].wChannels;
 }
 
+void clearBuffers() {
+	if (buffers == NULL) {
+		return;
+	}
+	for (int i = 0; i < NBUFFERS; i++) {
+		free(buffers[i]);
+		free(wHead[i]);
+	}
+	free(buffers);
+	buffers = NULL;
+}
+
+void createBuffers(int bufferBytes) {
+	clearBuffers();
+	buffers = (void**)calloc(sizeof(void*), NBUFFERS);
+	bufferLenBytes = bufferBytes;
+	for (int i = 0; i < NBUFFERS; i++) {
+		buffers[i] = malloc(bufferBytes);
+		wHead[i] = (LPWAVEHDR) calloc(sizeof(WAVEHDR), 1);
+		wHead[i]->lpData = (char*) buffers[i];
+		wHead[i]->dwBytesRecorded = 0;
+		wHead[i]->dwUser = i;   // so I know which one it is when its returned !
+		wHead[i]->dwFlags = 0;
+		wHead[i]->dwBufferLength = bufferLenBytes;
+	}
+}
+
 // https://learn.microsoft.com/en-us/previous-versions/dd743849(v=vs.85)
 void CALLBACK waveInProc(
 	HWAVEIN   hwi,
@@ -115,6 +148,7 @@ void CALLBACK waveInProc(
 	DWORD_PTR dwParam1,
 	DWORD_PTR dwParam2
 ) {
+	LPWAVEHDR thisWaveHdr = (LPWAVEHDR)dwParam1;
 	switch (uMsg) {
 	case WIM_OPEN:
 		printf("waveInProc OPEN : %d\n", uMsg);
@@ -123,7 +157,10 @@ void CALLBACK waveInProc(
 		printf("waveInProc CLOSE : %d\n", uMsg);
 		break;
 	case WIM_DATA:
-		printf("waveInProc DATA : %d\n", uMsg);
+		// get the data from the buffer and send it to the jna callback, then recycle the buffer
+		printf("waveInProc DATA : %d block %d\n", uMsg, (int) thisWaveHdr->dwUser);
+		waveInPrepareHeader(hWaveIn, thisWaveHdr, sizeof(WAVEHDR));
+		waveInAddBuffer(hWaveIn, thisWaveHdr, sizeof(WAVEHDR));
 		break;
 	default:
 		printf("waveInProc other : %d\n", uMsg);
@@ -143,6 +180,18 @@ WINDOWSSOUNDJNA_API int waveStart(int iDevice, int nChannels, int sampleRate, in
 	waveFormat.wFormatTag = WAVE_FORMAT_PCM;
 
 	int res = waveInOpen(&hWaveIn, iDevice, &waveFormat, (DWORD_PTR) waveInProc, NULL, CALLBACK_FUNCTION);
+
+	bufferLenBytes = waveFormat.nAvgBytesPerSec / 10;
+	if (bufferLenBytes < 1024) {
+		bufferLenBytes = 1024;
+	}
+	createBuffers(bufferLenBytes);
+	// and send all the buffers to the device. 
+	for (int i = 0; i < NBUFFERS; i++) {
+		waveInPrepareHeader(hWaveIn, wHead[i], sizeof(WAVEHDR));
+		waveInAddBuffer(hWaveIn, wHead[i], sizeof(WAVEHDR));
+	}
+
 	res = waveInStart(hWaveIn);
 	return res;
 }
