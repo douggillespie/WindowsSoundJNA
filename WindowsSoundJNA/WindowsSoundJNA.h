@@ -21,6 +21,8 @@ extern WINDOWSSOUNDJNA_API int nWindowsSoundJNA;
 
 WINDOWSSOUNDJNA_API int fnWindowsSoundJNA(void);*/
 
+typedef int(__stdcall *wmmCallback)(const char* data, int dataLen);
+
 extern "C" {
 	
 	WINDOWSSOUNDJNA_API int enumerateDevices();
@@ -29,11 +31,15 @@ extern "C" {
 
 	WINDOWSSOUNDJNA_API char* getDeviceName(int iDevice);
 
+	WINDOWSSOUNDJNA_API WCHAR* getDeviceName2(int iDevice);
+
 	WINDOWSSOUNDJNA_API int getDeviceFormats(int iDevice);
 
 	WINDOWSSOUNDJNA_API int getDeviceChannels(int iDevice);
 
-	WINDOWSSOUNDJNA_API int waveStart(int iDevice, int nChannels, int sampleRate, int bitDepth);
+	WINDOWSSOUNDJNA_API int wavePrepare(int iDevice, int nChannels, int sampleRate, int bitDepth, wmmCallback callBackFn);
+
+	WINDOWSSOUNDJNA_API int waveStart();
 	
 	WINDOWSSOUNDJNA_API int waveStop();
 

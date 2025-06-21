@@ -34,7 +34,7 @@ BOOL WINAPI DllMain(
 	switch (fdwReason)
 	{
 	case DLL_PROCESS_ATTACH:
-		printf("In sound card DLL entry function reason %d\n", fdwReason);
+		//printf("In sound card DLL entry function reason %d\n", fdwReason);
 		//wEnumerateDevices();
 		fflush(stdout);
 		break;
@@ -53,6 +53,9 @@ int bufferLenBytes;
 int currentBuffer = 0;
 void** buffers = NULL;
 static LPWAVEHDR wHead[NBUFFERS];
+static wmmCallback WMMCallback = NULL;
+static bool volatile running = FALSE;
+int prepareError = 0;
 
 
 WINDOWSSOUNDJNA_API int enumerateDevices() {
@@ -96,6 +99,15 @@ WINDOWSSOUNDJNA_API char* getDeviceName(int iDevice) {
 	//printf("\n");
 	//fflush(stdout);
 	return name;
+}
+
+
+WINDOWSSOUNDJNA_API WCHAR* getDeviceName2(int iDevice) {
+	if (iDevice >= nDevices) {
+		return NULL;
+	}
+	WAVEINCAPS* caps = deviceCaps + iDevice;
+	return caps->szPname;
 }
 
 
@@ -151,25 +163,29 @@ void CALLBACK waveInProc(
 	LPWAVEHDR thisWaveHdr = (LPWAVEHDR)dwParam1;
 	switch (uMsg) {
 	case WIM_OPEN:
-		printf("waveInProc OPEN : %d\n", uMsg);
+		//printf("waveInProc OPEN : %d\n", uMsg);
 		break;
 	case WIM_CLOSE:
-		printf("waveInProc CLOSE : %d\n", uMsg);
+		//printf("waveInProc CLOSE : %d\n", uMsg);
 		break;
 	case WIM_DATA:
 		// get the data from the buffer and send it to the jna callback, then recycle the buffer
-		printf("waveInProc DATA : %d block %d\n", uMsg, (int) thisWaveHdr->dwUser);
-		waveInPrepareHeader(hWaveIn, thisWaveHdr, sizeof(WAVEHDR));
+		//printf("waveInProc DATA : %d block %d\n", uMsg, (int) thisWaveHdr->dwUser);
+		//waveInPrepareHeader(hWaveIn, thisWaveHdr, sizeof(WAVEHDR));
+		if (running && WMMCallback) {
+			WMMCallback((const char*)thisWaveHdr->lpData, bufferLenBytes);
+		}
 		waveInAddBuffer(hWaveIn, thisWaveHdr, sizeof(WAVEHDR));
 		break;
 	default:
-		printf("waveInProc other : %d\n", uMsg);
+		//printf("waveInProc other : %d\n", uMsg);
 		break;
 	}
-	fflush(stdout);
+	//fflush(stdout);
 }
 
-WINDOWSSOUNDJNA_API int waveStart(int iDevice, int nChannels, int sampleRate, int bitDepth) {
+WINDOWSSOUNDJNA_API int wavePrepare(int iDevice, int nChannels, int sampleRate, int bitDepth, wmmCallback callBackFn) {
+	WMMCallback = callBackFn;
 	WAVEFORMATEX waveFormat;
 	waveFormat.cbSize = 0;
 	waveFormat.nChannels = nChannels;
@@ -179,8 +195,12 @@ WINDOWSSOUNDJNA_API int waveStart(int iDevice, int nChannels, int sampleRate, in
 	waveFormat.nAvgBytesPerSec = waveFormat.nBlockAlign * sampleRate;
 	waveFormat.wFormatTag = WAVE_FORMAT_PCM;
 
-	int res = waveInOpen(&hWaveIn, iDevice, &waveFormat, (DWORD_PTR) waveInProc, NULL, CALLBACK_FUNCTION);
+	prepareError = waveInOpen(&hWaveIn, iDevice, &waveFormat, (DWORD_PTR) waveInProc, NULL, CALLBACK_FUNCTION);
 
+	if (prepareError != MMSYSERR_NOERROR) {
+		hWaveIn = NULL;
+		return prepareError;
+	}
 	bufferLenBytes = waveFormat.nAvgBytesPerSec / 10;
 	if (bufferLenBytes < 1024) {
 		bufferLenBytes = 1024;
@@ -192,11 +212,20 @@ WINDOWSSOUNDJNA_API int waveStart(int iDevice, int nChannels, int sampleRate, in
 		waveInAddBuffer(hWaveIn, wHead[i], sizeof(WAVEHDR));
 	}
 
-	res = waveInStart(hWaveIn);
+	
+}
+
+WINDOWSSOUNDJNA_API int waveStart() {
+	if (hWaveIn == NULL || prepareError != MMSYSERR_NOERROR) {
+		return prepareError;
+	}
+	running = TRUE;
+	int res = waveInStart(hWaveIn);
 	return res;
 }
 
 WINDOWSSOUNDJNA_API int waveStop() {
+	running = FALSE;
 	if (hWaveIn == NULL) {
 		return 0;
 	}
