@@ -18,8 +18,8 @@
  * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston,
  * MA 02110-1301, USA.
  * 
- * Build command in Geany set to gcc -shared -o linuxsound.so "%f" -lasound
- * Otherwise seems OK with default build parameters. 
+ * Build command : gcc -shared -o linuxsound.so linuxsoundjna.c -lasound
+ * Generally seems OK with default build parameters. 
  */
 
 
@@ -38,6 +38,7 @@ static int nDevices = 0;
 static char** deviceNames = NULL;
 static char** longNames = NULL;
 #define MAX_DEVICES 10
+#define DEVICE_LEN 128
 static char* readBuffer = NULL;
 static int readBufferLength = 0;
 static int readBufferFrames = 0;
@@ -60,8 +61,12 @@ int enumerateDevices() {
     int err;
     nDevices = 0;
     if (deviceNames == NULL) {
-		deviceNames = (char**) malloc(MAX_DEVICES * sizeof(char*));
-		longNames = (char**) malloc(MAX_DEVICES * sizeof(char*));
+		deviceNames = (char**) calloc(MAX_DEVICES, sizeof(char*));
+		longNames = (char**) calloc(MAX_DEVICES, sizeof(char*));
+	}
+	else if (nDevices >= MAX_DEVICES) {
+		deviceNames = (char**) realloc(deviceNames, nDevices+1 * sizeof(char*));
+		longNames = (char**) realloc(longNames, nDevices+1 * sizeof(char*));
 	}
 
     for (;;) {
@@ -77,15 +82,15 @@ int enumerateDevices() {
             break;
 		}
 		if (deviceNames[nDevices] == NULL) {
-			deviceNames[nDevices] = (char*) malloc(256*sizeof(char));
-			longNames[nDevices] = (char*) malloc(256*sizeof(char));
+			deviceNames[nDevices] = (char*) calloc(DEVICE_LEN, sizeof(char));
+			longNames[nDevices] = (char*) calloc(DEVICE_LEN, sizeof(char));
 		}
 		// get the sound card name. 
 		snd_card_get_name(cardNum, &deviceNames[nDevices]);
-		deviceNames[nDevices] = realloc(deviceNames[nDevices], strlen(deviceNames[nDevices])+1);
+		//deviceNames[nDevices] = realloc(deviceNames[nDevices], strlen(deviceNames[nDevices])+1);
 		snd_card_get_longname(cardNum, &longNames[nDevices]);
-		fprintf(stderr, "Card %d Name %d \"%s\" long name \"%s\"\n", nDevices,strlen(deviceNames[nDevices]), 
-			deviceNames[nDevices], longNames[nDevices]);
+		//fprintf(stderr, "Card %d Name %d \"%s\" long name \"%s\"\n", nDevices,strlen(deviceNames[nDevices]), 
+		//	deviceNames[nDevices], longNames[nDevices]);
 
         ++nDevices;   // Another card found, so bump the count
     }
