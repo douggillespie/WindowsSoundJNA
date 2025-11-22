@@ -125,15 +125,25 @@ int wavePrepare(int iDevice, int nChannels, int sampleRate, int bitDepth, wmmCal
 	// example at https://gist.github.com/albanpeignier/104902
 	WMMCallback = callBackFn;
 	int err;
-	snd_pcm_format_t format = SND_PCM_FORMAT_S16_LE;
-	if (bitDepth == 24) {
+	snd_pcm_format_t format;
+	switch (bitDepth) {
+	  case 16:
+		format = SND_PCM_FORMAT_S16_LE;
+		break;
+	  case 24:
 		format = SND_PCM_FORMAT_S24_LE;
+		break;
+	  case 32:
+		format = SND_PCM_FORMAT_S32_LE;
+		break;
 	}
+	int fmtWidth = snd_pcm_format_width(format);
+	//fprintf(stderr, "Audio format width = %d bits\n", fmtWidth);
 	char* devName = getDeviceName(iDevice);
 	char name[20];
 	sprintf(name, "hw:%d",iDevice);
 	if ((err = snd_pcm_open(&capture_handle, name, SND_PCM_STREAM_CAPTURE, 0)) < 0) {
-		printf("Unable to open sound device \"%s\": %s\n", name, snd_strerror(err));
+		fprintf(stderr, "Unable to open sound device \"%s\": %s\n", name, snd_strerror(err));
 		return err;
 	}
 	if ((err = snd_pcm_hw_params_malloc (&hw_params)) < 0) {
@@ -181,7 +191,7 @@ int wavePrepare(int iDevice, int nChannels, int sampleRate, int bitDepth, wmmCal
 		free(readBuffer);
 	}
 	readBufferFrames = sampleRate / 10;
-	readBufferLength = readBufferFrames * nChannels * snd_pcm_format_width(format) / 8;	
+	readBufferLength = readBufferFrames * nChannels * fmtWidth / 8;	
 	readBuffer = (char*) malloc(readBufferLength);	
 		
 	return 0;
