@@ -123,6 +123,15 @@ int getDeviceChannels(int iDevice) {
 }
 int wavePrepare(int iDevice, int nChannels, int sampleRate, int bitDepth, wmmCallback callBackFn) {
 	// example at https://gist.github.com/albanpeignier/104902
+	/*
+	 *  From terminal need to issue amixer -c 2 set Line 0  (change the 2 to the device number) to 
+	 * turn off mic input which drops the COSMOS card into a stero, not mono mode. 
+	 */
+	char mCmd[256];
+	sprintf(mCmd, "amixer -c %d set Line 0", iDevice);
+	system(mCmd);
+	fprintf(stderr, "Sent command %s\n", mCmd);
+			 	 
 	WMMCallback = callBackFn;
 	int err;
 	snd_pcm_format_t format;
@@ -161,7 +170,7 @@ int wavePrepare(int iDevice, int nChannels, int sampleRate, int bitDepth, wmmCal
              snd_strerror (err));
 		return err;
 	}
-		
+			
 	if ((err = snd_pcm_hw_params_set_format (capture_handle, hw_params, format)) < 0) {
 		fprintf (stderr, "cannot set sample format (%s)\n",
              snd_strerror (err));
